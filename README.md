@@ -1,1 +1,0 @@
-# KdV-solution-using-PINNs
