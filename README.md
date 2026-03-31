@@ -62,7 +62,7 @@ Wrote a function to compute `∂u/∂t`, `∂u/∂x`, and `∂³u/∂x³` using 
 ![Derivative verification](screenshots/derivative_check.png)
 
 ### 4. Training — Adam
-Trained for 15,000 iterations with Adam optimizer (lr=0.001). Loss dropped from ~0.17 to ~10⁻⁵, but the loss plot showed persistent oscillations — Adam was bouncing around the minimum without settling.
+Trained for 15,000 iterations with Adam optimizer (lr=0.001). Loss dropped from ~0.64 to ~10⁻⁵, but the loss plot showed persistent oscillations — Adam was bouncing around the minimum without settling.
 
 **Result:** L2 relative error = **2.24%**
 
