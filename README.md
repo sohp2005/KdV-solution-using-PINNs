@@ -54,7 +54,7 @@ Coded the soliton formula, plotted it at `t=0` to verify the shape (should be a 
 ![Soliton propagation across multiple times](screenshots/soliton_propagation.png)
 
 ### 2. Neural network
-Built a fully connected network: 2 inputs → 5 hidden layers of 50 neurons with tanh → 1 output. Xavier initialization. Tested with random inputs to make sure it runs.
+Built a fully connected network: 2 inputs → 6 hidden layers of 50 neurons with tanh → 1 output. Xavier initialization. Tested with random inputs to make sure it runs.
 
 ### 3. Derivatives
 Wrote a function to compute `∂u/∂t`, `∂u/∂x`, and `∂³u/∂x³` using PyTorch autograd. **Verified it independently** by comparing autograd derivatives against finite differences `(f(x+h) - f(x-h)) / 2h`. Max difference was ~0.001, confirming the implementation is correct.
