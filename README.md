@@ -26,6 +26,8 @@ u(x,t) = −c / [2·cosh²(½√c · (x − ct))]
 
 We pick `c = 2`, which gives a wave of depth 1 moving at speed 2.
 
+> **Note on the sign convention:** The solution is negative (a trough, not a peak) because we follow the Section 4 convention of the paper, which uses `−6u·∂u/∂x`. Section 2 of the same paper uses `+6u·∂u/∂x` and gives a positive soliton. The two are related by `u → −u`. Mixing conventions between the PDE and the initial condition will cause training to fail silently — this is a common pitfall.
+
 The idea: instead of using the known formula, we train a neural network to figure out the solution on its own — purely from the equation and the initial wave shape. Then we compare its output against the exact formula to see how well it did.
 
 ---
@@ -51,7 +53,7 @@ Coded the soliton formula, plotted it at `t=0` to verify the shape (should be a 
 
 ![Initial condition at t=0](screenshots/soliton_t0.png)
 
-![Soliton propagation across multiple times](screenshots/soliton_propagation.png)
+![Soliton propagation across multiple times](screenshots/soliton_propogation.png)
 
 ### 2. Neural network
 Built a fully connected network: 2 inputs → 6 hidden layers of 50 neurons with tanh → 1 output. Xavier initialization. Tested with random inputs to make sure it runs.
@@ -62,7 +64,7 @@ Wrote a function to compute `∂u/∂t`, `∂u/∂x`, and `∂³u/∂x³` using 
 ![Derivative verification](screenshots/derivative_check.png)
 
 ### 4. Training — Adam
-Trained for 15,000 iterations with Adam optimizer (lr=0.001). Loss dropped from ~0.64 to ~10⁻⁵, but the loss plot showed persistent oscillations — Adam was bouncing around the minimum without settling.
+Trained for 15,000 iterations with Adam optimizer (lr=0.001). Loss dropped from ~0.17 to ~10⁻⁵, but the loss plot showed persistent oscillations — Adam was bouncing around the minimum without settling.
 
 **Result:** L2 relative error = **2.24%**
 
@@ -99,25 +101,28 @@ Checked whether `∫u dx` stays constant over time — this is a conservation la
 ## Repo structure
 
 ```
-├── KdV_using_PINNs.ipynb    # the notebook (run top to bottom in Colab with T4 GPU)
+├── KdV_using_PINNs_final.ipynb    # the notebook (run top to bottom in Colab with T4 GPU)
 ├── README.md
-├── 11_Schalch.pdf            # reference paper
+├── 11_Schalch.pdf                  # reference paper
 └── screenshots/
     ├── soliton_t0.png
-    ├── soliton_propagation.png
+    ├── soliton_propogation.png
     ├── derivative_check.png
     ├── adam_results.png
     ├── adam_heatmap.png
     ├── adam_loss.png
+    ├── adam_iterations.png
     ├── lbfgs_results.png
-    └── lbfgs_heatmap.png
+    ├── lbfgs_heatmap.png
+    ├── lbfgs_iterations.png
+    └── pinn_architecture.png
 ```
 
 ---
 
 ## How to run
 
-1. Open `KdV_using_PINNs.ipynb` in Google Colab
+1. Open `KdV_using_PINNs_final.ipynb` in Google Colab
 2. Go to Runtime → Change runtime type → T4 GPU
 3. Run all cells top to bottom
 4. Training takes ~15-20 minutes total (Adam + L-BFGS)
