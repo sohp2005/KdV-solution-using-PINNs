@@ -1,6 +1,6 @@
 # Solving the KdV Equation using Physics-Informed Neural Networks
 
-This project solves the Korteweg-de Vries (KdV) equation using a Physics-Informed Neural Network (PINN) and recovers the travelling wave (soliton) solution — without any training data.
+This project solves the Korteweg-de Vries (KdV) equation using a Physics-Informed Neural Network (PINN) and recovers the travelling wave (soliton) solution. We explore two approaches: physics-only and data-augmented.
 
 Done as preliminary/informal work under **Prof. Snehanshu Saha**, BITS Pilani Goa.
 
@@ -28,73 +28,82 @@ We pick `c = 2`, which gives a wave of depth 1 moving at speed 2.
 
 > **Note on the sign convention:** The solution is negative (a trough, not a peak) because we follow the Section 4 convention of the paper, which uses `−6u·∂u/∂x`. Section 2 of the same paper uses `+6u·∂u/∂x` and gives a positive soliton. The two are related by `u → −u`. Mixing conventions between the PDE and the initial condition will cause training to fail silently — this is a common pitfall.
 
-The idea: instead of using the known formula, we train a neural network to figure out the solution on its own — purely from the equation and the initial wave shape. Then we compare its output against the exact formula to see how well it did.
-
 ---
 
-## How it works
+## Two approaches
 
-The neural network takes `(x, t)` as input and outputs a guess for the wave height `u`. We train it by minimizing three losses:
+### Approach 1: Physics-only
+The network learns from three losses:
+- **PDE loss** — does the network's output satisfy the KdV equation?
+- **IC loss** — does it match the known soliton shape at `t=0`?
+- **BC loss** — is it zero at the domain edges?
 
-- **PDE loss** — plug the network's output into the KdV equation, check if it equals zero
-- **IC loss** — at `t=0`, the network's output must match the known soliton shape
-- **BC loss** — at the domain edges (`x=-10` and `x=20`), the wave height should be zero
+No data. The equation is the teacher.
 
-No training data. The equation itself is the teacher.
+### Approach 2: Physics + Data
+Same as above, plus:
+- **Data loss** — 200 synthetic measurement points scattered across the domain, computed from the exact solution
+
+This simulates having sparse sensor readings in a real-world scenario. The physics fills gaps between sensors, the sensors anchor the physics.
 
 ---
 
 ## Our workflow
 
-We built this step by step, verifying each piece before moving on.
+Built step by step, verifying each piece before moving on.
 
 ### 1. Exact solution
-Coded the soliton formula, plotted it at `t=0` to verify the shape (should be a dip centered at `x=0` with depth `-1`). Then plotted at multiple times to confirm the wave slides right at speed 2 without changing shape.
+Coded the soliton formula, plotted at `t=0` to verify the shape, then at multiple times to confirm the wave slides right at speed 2 without changing shape.
 
 ![Initial condition at t=0](screenshots/soliton_t0.png)
 
-![Soliton propagation across multiple times](screenshots/soliton_propogation.png)
+![Soliton propagation](screenshots/soliton_propogation.png)
 
 ### 2. Neural network
-Built a fully connected network: 2 inputs → 6 hidden layers of 50 neurons with tanh → 1 output. Xavier initialization. Tested with random inputs to make sure it runs.
+Fully connected: 2 inputs → 6 hidden layers of 50 neurons with tanh → 1 output. Xavier initialization.
 
 ### 3. Derivatives
-Wrote a function to compute `∂u/∂t`, `∂u/∂x`, and `∂³u/∂x³` using PyTorch autograd. **Verified it independently** by comparing autograd derivatives against finite differences `(f(x+h) - f(x-h)) / 2h`. Max difference was ~0.001, confirming the implementation is correct.
+Computed `∂u/∂t`, `∂u/∂x`, `∂³u/∂x³` via PyTorch autograd. **Verified independently** against finite differences `(f(x+h) - f(x-h)) / 2h`. Max difference ~0.001.
 
 ![Derivative verification](screenshots/derivative_check.png)
 
-### 4. Training — Adam
-Trained for 15,000 iterations with Adam optimizer (lr=0.001). Loss dropped from ~0.17 to ~10⁻⁵, but the loss plot showed persistent oscillations — Adam was bouncing around the minimum without settling.
+### 4. Physics-only training
+Adam (15,000 iter) → L-BFGS (2,000 iter).
 
-**Result:** L2 relative error = **2.24%**
+**Result:** L2 error = **0.98%**
 
-![Comparison plots after Adam](screenshots/adam_results.png)
+![Comparison after L-BFGS](screenshots/lbfgs_results.png)
 
-![Error heatmap after Adam](screenshots/adam_heatmap.png)
+![Error heatmap — physics-only](screenshots/lbfgs_heatmap.png)
 
-![Adam loss convergence](screenshots/adam_loss.png)
+Error grows at later times because the network has no guidance beyond `t=0`.
 
-### 5. Training — L-BFGS fine-tuning
-Noticed the oscillations in the Adam loss plot and switched to L-BFGS (2000 iterations), which uses curvature information to take more precise steps. All losses dropped to ~10⁻⁷.
+### 5. Data-augmented training
+Added 200 synthetic data points across the domain. Retrained with the same Adam + L-BFGS procedure.
 
-**Result:** L2 relative error = **0.98%**
+**Result:** L2 error = **0.07%**
 
-![Comparison plots after L-BFGS](screenshots/lbfgs_results.png)
+![Comparison after data-augmented training](screenshots/post_new_adam.png)
 
-![Error heatmap after L-BFGS](screenshots/lbfgs_heatmap.png)
+![Error heatmap — data-augmented](screenshots/final_heat.png)
+
+Error is now uniform across all times. The late-time drift is gone.
 
 ### 6. Conservation check
-Checked whether `∫u dx` stays constant over time — this is a conservation law of the KdV equation that we never told the network about. The integral stayed between -2.82 and -2.83 across all timesteps. The network learned a conservation law purely from the equation.
+`∫u dx` stays constant (~-2.83) across all timesteps in both approaches. The network learned a conservation law we never told it about.
 
 ---
 
 ## Results summary
 
-| Metric | Adam only | Adam + L-BFGS |
+| Metric | Physics-only | Physics + Data |
 |---|---|---|
-| L2 Relative Error | 2.24% | 0.98% |
-| Total Loss | ~10⁻⁵ (oscillating) | ~10⁻⁷ (stable) |
-| Conservation (∫u dx) | — | ~-2.82 (constant) |
+| L2 Relative Error | 0.98% | **0.07%** |
+| Total Loss | ~10⁻⁷ | ~10⁻⁷ |
+| Max pointwise error | ~0.02 | ~0.006 |
+| Conservation variation | 0.4% | 0.2% |
+
+Adding 200 data points improved accuracy by ~14x. Physics and data are complementary — neither alone is as good as both together.
 
 ---
 
@@ -115,7 +124,19 @@ Checked whether `∫u dx` stays constant over time — this is a conservation la
     ├── lbfgs_results.png
     ├── lbfgs_heatmap.png
     ├── lbfgs_iterations.png
-    └── pinn_architecture.png
+    ├── pinn_architecture.png
+    ├── new_data_loss_fxn_added.png
+    ├── new_losses.png
+    ├── new_adam_re.png
+    ├── new_adam_heat.png
+    ├── new_lfbgs.png
+    ├── post_new_adam.png
+    ├── final_plot.png
+    ├── final_heat.png
+    ├── final_losses_print.png
+    ├── final_L2.png
+    ├── final_check.png
+    └── dataloss_colo_points.png
 ```
 
 ---
