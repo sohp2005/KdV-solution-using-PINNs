@@ -67,11 +67,11 @@ The PDE acts as a noise filter. The data-only network overfits the noise complet
 
 **PINN at 10% noise:**
 
-![PINN 10% noise](screenshots/pinn_noise10%.png)
+![PINN 10% noise](screenshots/pinn_noise10pct.png)
 
 **Data-only NN at 10% noise (same data):**
 
-![Data-only 10% noise](screenshots/dataonly_noise10%.png)
+![Data-only 10% noise](screenshots/dataonly_noise10pct.png)
 
 **Unexpected finding:** L-BFGS fine-tuning *hurts* the PINN under noise (e.g., 5.5% → 6.8% at 5% noise) because it aggressively overfits corrupted data. The data-only model doesn't have this problem. When data is noisy, stick with Adam.
 
@@ -122,7 +122,7 @@ Same architecture, same domain `[−10, 20] × [0, 5]`, different `c`.
 
 `c = 4` fails because (1) gradients are twice as steep, and (2) the soliton hits the boundary at `t = 5`. Fix: wider domain or shorter time window.
 
-![Loss convergence c=1 vs c=4](screenshots/lossconv@c=1.png)
+![Loss convergence c=1 vs c=4](screenshots/loss_conv_c1.png)
 
 ---
 
