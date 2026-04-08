@@ -1,157 +1,169 @@
 # Solving the KdV Equation using Physics-Informed Neural Networks
 
-This project solves the Korteweg-de Vries (KdV) equation using a Physics-Informed Neural Network (PINN) and recovers the travelling wave (soliton) solution. We explore two approaches: physics-only and data-augmented.
+We solve the Korteweg–de Vries (KdV) equation with a PINN, then run four experiments to figure out what actually matters when deploying PINNs on wave problems: noise, collocation density, initial conditions, and wave speed.
 
-Done as preliminary/informal work under **Prof. Snehanshu Saha**, BITS Pilani Goa.
+Done as preliminary work under **Prof. Snehanshu Saha**, BITS Pilani Goa.
 
 **By:** Soham Pujari (2024A7PS0490G) and Nirek Agarwal (2024A7PS0581G)
 
 ---
 
-## What is this?
+## The problem
 
-The KdV equation describes how waves travel in shallow water. It has a special solution called a **soliton** — a wave that moves without changing shape, because the nonlinear steepening and dispersive spreading perfectly cancel each other out.
-
-The equation (Section 4 sign convention from the reference paper):
+The KdV equation describes shallow water waves. It has a special solution called a **soliton** — a wave that moves without changing shape.
 
 ```
 ∂u/∂t − 6u·∂u/∂x + ∂³u/∂x³ = 0
 ```
 
-The exact soliton solution (Eq. 4.3 from the paper):
+Exact soliton (Section 4 sign convention from Schalch):
 
 ```
 u(x,t) = −c / [2·cosh²(½√c · (x − ct))]
 ```
 
-We pick `c = 2`, which gives a wave of depth 1 moving at speed 2.
+We use `c = 2` (peak depth = −1, speed = 2) as our default.
 
-> **Note on the sign convention:** The solution is negative (a trough, not a peak) because we follow the Section 4 convention of the paper, which uses `−6u·∂u/∂x`. Section 2 of the same paper uses `+6u·∂u/∂x` and gives a positive soliton. The two are related by `u → −u`. Mixing conventions between the PDE and the initial condition will cause training to fail silently — this is a common pitfall.
-
----
-
-## Two approaches
-
-### Approach 1: Physics-only
-The network learns from three losses:
-- **PDE loss** — does the network's output satisfy the KdV equation?
-- **IC loss** — does it match the known soliton shape at `t=0`?
-- **BC loss** — is it zero at the domain edges?
-
-No data. The equation is the teacher.
-
-### Approach 2: Physics + Data
-Same as above, plus:
-- **Data loss** — 200 synthetic measurement points scattered across the domain, computed from the exact solution
-
-This simulates having sparse sensor readings in a real-world scenario. The physics fills gaps between sensors, the sensors anchor the physics.
+> **Sign convention note:** The soliton is negative (a trough) because we follow the Section 4 convention with `−6u·∂u/∂x`. The Section 2 convention uses `+6u·∂u/∂x` and gives a positive soliton. They're related by `u → −u`. Mixing them will cause silent training failure.
 
 ---
 
-## Our workflow
+## What we did
 
-Built step by step, verifying each piece before moving on.
+### Baseline: Physics + Data PINN
 
-### 1. Exact solution
-Coded the soliton formula, plotted at `t=0` to verify the shape, then at multiple times to confirm the wave slides right at speed 2 without changing shape.
+The network learns from four losses:
+- **PDE loss** — does the output satisfy KdV? (10,000 collocation points)
+- **IC loss** — does it match the soliton at `t=0`? (500 points)
+- **BC loss** — is it zero at `x = −10` and `x = 20`? (100 points per edge)
+- **Data loss** — does it match 200 scattered synthetic measurements?
 
-![Initial condition at t=0](screenshots/soliton_t0.png)
+Architecture: 2 inputs `(x, t)` → 6 hidden layers × 50 neurons, tanh → 1 output `u(x,t)`.
 
-![Soliton propagation](screenshots/soliton_propogation.png)
+Training: Adam (15,000 iter) → L-BFGS (2,000 iter).
 
-### 2. Neural network
-Fully connected: 2 inputs → 6 hidden layers of 50 neurons with tanh → 1 output. Xavier initialization.
+**Baseline result: L² error = 0.0717%**
 
-### 3. Derivatives
-Computed `∂u/∂t`, `∂u/∂x`, `∂³u/∂x³` via PyTorch autograd. **Verified independently** against finite differences `(f(x+h) - f(x-h)) / 2h`. Max difference ~0.001.
+![Baseline comparison](screenshots/final_plot.png)
 
-![Derivative verification](screenshots/derivative_check.png)
+![Baseline error heatmap](screenshots/final_heat.png)
 
-### 4. Physics-only training
-Adam (15,000 iter) → L-BFGS (2,000 iter).
-
-**Result:** L2 error = **0.98%**
-
-![Comparison after L-BFGS](screenshots/lbfgs_results.png)
-
-![Error heatmap — physics-only](screenshots/lbfgs_heatmap.png)
-
-Error grows at later times because the network has no guidance beyond `t=0`.
-
-### 5. Data-augmented training
-Added 200 synthetic data points across the domain. Retrained with the same Adam + L-BFGS procedure.
-
-**Result:** L2 error = **0.07%**
-
-![Comparison after data-augmented training](screenshots/post_new_adam.png)
-
-![Error heatmap — data-augmented](screenshots/final_heat.png)
-
-Error is now uniform across all times. The late-time drift is gone.
-
-### 6. Conservation check
-`∫u dx` stays constant (~-2.83) across all timesteps in both approaches. The network learned a conservation law we never told it about.
+Conservation of mass (`∫u dx`) holds to within 0.4% across all timesteps — and we never enforced it.
 
 ---
 
-## Results summary
+### Experiment 1: Noisy data
 
-| Metric | Physics-only | Physics + Data |
-|---|---|---|
-| L2 Relative Error | 0.98% | **0.07%** |
-| Total Loss | ~10⁻⁷ | ~10⁻⁷ |
-| Max pointwise error | ~0.02 | ~0.006 |
-| Conservation variation | 0.4% | 0.2% |
+We added Gaussian noise (1%, 5%, 10%) to the 200 data points and compared the PINN against a data-only neural network (same architecture, no physics).
 
-Adding 200 data points improved accuracy by ~14x. Physics and data are complementary — neither alone is as good as both together.
+| Noise | PINN (best) | Data-only NN (best) | PINN advantage |
+|-------|-------------|---------------------|----------------|
+| 0%    | 0.07%       | 1.20%               | 17× |
+| 1%    | 0.83%       | 11.1%               | 13× |
+| 5%    | 5.51%       | 38.8%               | 7×  |
+| 10%   | 12.2%       | 54.7%               | 4.5× |
+
+The PDE acts as a noise filter. The data-only network overfits the noise completely:
+
+**PINN at 10% noise:**
+
+![PINN 10% noise](screenshots/pinn_noise10%.png)
+
+**Data-only NN at 10% noise (same data):**
+
+![Data-only 10% noise](screenshots/dataonly_noise10%.png)
+
+**Unexpected finding:** L-BFGS fine-tuning *hurts* the PINN under noise (e.g., 5.5% → 6.8% at 5% noise) because it aggressively overfits corrupted data. The data-only model doesn't have this problem. When data is noisy, stick with Adam.
+
+---
+
+### Experiment 2: Collocation point density
+
+How many PDE enforcement points do you actually need?
+
+| N_r    | L² error |
+|--------|----------|
+| 500    | 0.21%    |
+| 1,000  | 0.10%    |
+| 2,500  | 0.08%    |
+| 5,000  | 0.08%    |
+| 10,000 | 0.07%    |
+| 15,000 | 0.07%    |
+| 20,000 | 0.07%    |
+
+Saturates around 5,000. Even 500 gives 0.21%. More than 15,000 is wasteful.
+
+![Collocation saturation curve](screenshots/coll_points_plot.jpeg)
+
+---
+
+### Experiment 3: Dropping the initial condition
+
+Can 200 scattered measurements replace knowing the starting state?
+
+| Config | L² error |
+|--------|----------|
+| With IC (full PINN) | 0.072% |
+| Without IC (PDE + BC + data only) | 0.077% |
+
+Yes. The data points implicitly contain IC information, and the PDE fills in the rest.
+
+---
+
+### Experiment 4: Different wave speeds
+
+Same architecture, same domain `[−10, 20] × [0, 5]`, different `c`.
+
+| c | Peak depth | L² error |
+|---|------------|----------|
+| 1 | −0.5 | 0.07% |
+| 2 | −1.0 | 0.07% |
+| 4 | −2.0 | 29.5% |
+
+`c = 4` fails because (1) gradients are twice as steep, and (2) the soliton hits the boundary at `t = 5`. Fix: wider domain or shorter time window.
+
+![Loss convergence c=1 vs c=4](screenshots/lossconv@c=1.png)
+
+---
+
+## Key takeaways
+
+1. **The PDE is the backbone.** It denoises, compensates for missing ICs, and works with sparse enforcement. If you know the physics, use it.
+2. **L-BFGS is dangerous with noisy data.** It overfits noise in PINNs (but not in data-only models). Use Adam-only when noise is present.
+3. **You don't always need the initial condition.** Sparse measurements + PDE + BCs can reconstruct the full solution.
+4. **Scale your setup to your physics.** Steeper/faster waves need wider domains and possibly deeper networks.
 
 ---
 
 ## Repo structure
 
 ```
-├── KdV_using_PINNs_final.ipynb    # the notebook (run top to bottom in Colab with T4 GPU)
+├── screenshots/                        # all figures used in the report
+├── KdV_using_PINNs (5).ipynb          # baseline PINN notebook
+├── pinn_with_noise.ipynb              # Experiment 1: PINN with noisy data
+├── purely_data_driven_with_noise.ipynb # Experiment 1: data-only control
+├── noIC (2).ipynb                     # Experiment 3: no initial condition
+├── _c=1.ipynb                         # Experiment 4: wave speed c=1
+├── _c=4.ipynb                         # Experiment 4: wave speed c=4
 ├── README.md
-├── 11_Schalch.pdf                  # reference paper
-└── screenshots/
-    ├── soliton_t0.png
-    ├── soliton_propogation.png
-    ├── derivative_check.png
-    ├── adam_results.png
-    ├── adam_heatmap.png
-    ├── adam_loss.png
-    ├── adam_iterations.png
-    ├── lbfgs_results.png
-    ├── lbfgs_heatmap.png
-    ├── lbfgs_iterations.png
-    ├── pinn_architecture.png
-    ├── new_data_loss_fxn_added.png
-    ├── new_losses.png
-    ├── new_adam_re.png
-    ├── new_adam_heat.png
-    ├── new_lfbgs.png
-    ├── post_new_adam.png
-    ├── final_plot.png
-    ├── final_heat.png
-    ├── final_losses_print.png
-    ├── final_L2.png
-    ├── final_check.png
-    └── dataloss_colo_points.png
+
 ```
+
+Experiment 2 (collocation points) is run inside the baseline notebook with a loop over `n_pde` values.
 
 ---
 
 ## How to run
 
-1. Open `KdV_using_PINNs_final.ipynb` in Google Colab
-2. Go to Runtime → Change runtime type → T4 GPU
+1. Open any notebook in [Google Colab](https://colab.research.google.com/)
+2. Runtime → Change runtime type → **T4 GPU**
 3. Run all cells top to bottom
-4. Training takes ~15-20 minutes total (Adam + L-BFGS)
+4. Training takes ~15–20 minutes per notebook
 
 ---
 
 ## Reference
 
-Schalch, N. (2018). *The Korteweg-de Vries Equation.* ETH Zürich Proseminar: Algebra, Topology and Group Theory in Physics.
+Schalch, N. (2018). *The Korteweg–de Vries Equation.* ETH Zürich Proseminar: Algebra, Topology and Group Theory in Physics.
 
-We used the soliton solution from Eq. 4.3 (Section 4 sign convention) and `c = 2`.
+Raissi, M., Perdikaris, P., & Karniadakis, G.E. (2019). *Physics-informed neural networks.* J. Comput. Phys., 378, 686–707.
